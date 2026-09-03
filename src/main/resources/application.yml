@@ -1,0 +1,19 @@
+spring:
+  config:
+    # This tells Spring to load the .env file and parse it like a properties file
+    import: optional:file:.env[.properties]
+  application:
+    name: modelflux
+  datasource:
+    # Append the timezone directly to the URL string
+    url: jdbc:postgresql://localhost:5432/modelflux?options=-c%20TimeZone=UTC
+    username: postgres
+    password: ${DB_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+
+jwt:
+  secret: ${JWT_SECRET}
+  expiration: 86400000
