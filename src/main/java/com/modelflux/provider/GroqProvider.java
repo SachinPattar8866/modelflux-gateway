@@ -2,19 +2,25 @@ package com.modelflux.provider;
 
 import com.modelflux.model.dto.ChatMessage;
 import com.modelflux.model.enums.ProviderName;
+import com.modelflux.provider.ratelimit.GroqRateLimitParser;
+import com.modelflux.provider.ratelimit.RateLimitHeaderParser.RateLimitInfo;
+import com.modelflux.service.ProviderRateLimitService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientRequestException;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
+import org.springframework.core.annotation.Order;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+@Order(1)
 @Service
 public class GroqProvider implements AIProvider {
 
@@ -22,16 +28,22 @@ public class GroqProvider implements AIProvider {
     private final String apiKey;
     private final String apiUrl;
     private final String model;
+    private final GroqRateLimitParser rateLimitParser;
+    private final ProviderRateLimitService rateLimitService;
 
     public GroqProvider(
             WebClient webClient,
             @Value("${groq.api.key}") String apiKey,
-            @Value("${groq.api.url:https://api.groq.com/openai/v1/chat/completions}") String apiUrl,
-            @Value("${groq.model:llama-3.3-70b-versatile}") String model) {
+            @Value("${groq.api.url}") String apiUrl,
+            @Value("${groq.model}") String model,
+            GroqRateLimitParser rateLimitParser,
+            ProviderRateLimitService rateLimitService) {
         this.webClient = webClient;
         this.apiKey = apiKey;
         this.apiUrl = apiUrl;
         this.model = model;
+        this.rateLimitParser = rateLimitParser;
+        this.rateLimitService = rateLimitService;
     }
 
     @Override
@@ -53,7 +65,7 @@ public class GroqProvider implements AIProvider {
         }
         requestBody.put("messages", messages);
 
-        GroqResponse response;
+        ResponseEntity<GroqResponse> response;
         try {
             response = webClient.post()
                     .uri(apiUrl)
@@ -61,19 +73,24 @@ public class GroqProvider implements AIProvider {
                     .contentType(MediaType.APPLICATION_JSON)
                     .bodyValue(requestBody)
                     .retrieve()
-                    .bodyToMono(GroqResponse.class)
+                    .toEntity(GroqResponse.class)
                     .block();
         } catch (WebClientResponseException e) {
-            // Groq responded, but with an error status (4xx/5xx) — e.g. bad API key, rate limit, invalid request
-            throw new RuntimeException(
-                    "Groq API returned an error: " + e.getStatusCode() + " - " + e.getResponseBodyAsString(), e);
+            RateLimitInfo info = rateLimitParser.parse(e.getHeaders());
+            rateLimitService.recordRateLimitInfo(ProviderName.GROQ, info);
+            throw new com.modelflux.exception.ProviderApiException(
+                    "Groq API returned an error: " + e.getStatusCode() + " - " + e.getResponseBodyAsString(),
+                    e.getStatusCode(), e);
         } catch (WebClientRequestException e) {
-            // Couldn't reach Groq at all — network issue, DNS failure, timeout, etc.
-            throw new RuntimeException("Failed to reach Groq API: " + e.getMessage(), e);
+            throw e; // let Resilience4j's retry predicate handle this directly — it already knows WebClientRequestException is retryable
         }
 
-        if (response != null && response.choices != null && !response.choices.isEmpty()) {
-            return response.choices.get(0).message.content;
+        RateLimitInfo info = rateLimitParser.parse(response.getHeaders());
+        rateLimitService.recordRateLimitInfo(ProviderName.GROQ, info);
+
+        GroqResponse body = response.getBody();
+        if (body != null && body.choices != null && !body.choices.isEmpty()) {
+            return body.choices.get(0).message.content;
         }
 
         throw new RuntimeException("Received an empty or malformed response from Groq API");
