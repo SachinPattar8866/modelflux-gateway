@@ -4,15 +4,21 @@ spring:
     import: optional:file:.env[.properties]
   application:
     name: modelflux
-  datasource:
 
+  datasource:
     url: jdbc:postgresql://localhost:5432/modelflux
     username: postgres
     password: ${DB_PASSWORD}
+
   jpa:
     hibernate:
       ddl-auto: update
     show-sql: true
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
 
 jwt:
   secret: ${JWT_SECRET}
@@ -23,3 +29,15 @@ groq:
     key: ${GROQ_API_KEY}
     url: https://api.groq.com/openai/v1/chat/completions
   model: openai/gpt-oss-20b
+
+gemini:
+  api:
+    key: ${GEMINI_API_KEY}
+    url: https://generativelanguage.googleapis.com/v1beta/models/
+  model: gemini-3.8-flash
+
+openrouter:
+  api:
+    key: ${OPENROUTER_API_KEY}
+    url: https://openrouter.ai/api/v1/chat/completions
+  model: openrouter/free
