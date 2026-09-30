@@ -46,6 +46,11 @@ public class GeminiProvider implements AIProvider {
     }
 
     @Override
+    public reactor.core.publisher.Flux<String> streamMessage(List<ChatMessage> chatHistory) {
+        throw new UnsupportedOperationException("Streaming not yet implemented for Gemini");
+    }
+
+    @Override
     public ProviderName getProviderName() {
         return ProviderName.GEMINI;
     }
