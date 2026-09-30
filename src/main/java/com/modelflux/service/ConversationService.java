@@ -82,4 +82,21 @@ public class ConversationService {
         String trimmed = firstMessage.trim();
         return trimmed.length() > 50 ? trimmed.substring(0, 50) + "..." : trimmed;
     }
+
+    @Transactional
+    public Message saveAssistantMessage(Long conversationId, String content, String providerUsed) {
+        Conversation conversation = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new IllegalArgumentException("Conversation not found: " + conversationId));
+
+        Message message = new Message();
+        message.setConversation(conversation);
+        message.setRole(Message.Role.ASSISTANT);
+        message.setContent(content);
+        message.setProviderUsed(providerUsed);
+
+        conversation.setUpdatedAt(java.time.LocalDateTime.now());
+        conversationRepository.save(conversation);
+
+        return messageRepository.save(message);
+    }
 }
