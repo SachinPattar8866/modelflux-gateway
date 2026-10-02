@@ -128,8 +128,16 @@ public class GroqProvider implements AIProvider {
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(requestBody)
-                .retrieve()
-                .bodyToFlux(String.class)
+                .exchangeToFlux(response -> {
+                    RateLimitInfo info = rateLimitParser.parse(response.headers().asHttpHeaders());
+                    rateLimitService.recordRateLimitInfo(ProviderName.GROQ, info);
+
+                    if (response.statusCode().isError()) {
+                        return response.createException().flatMapMany(reactor.core.publisher.Flux::error);
+                    }
+
+                    return response.bodyToFlux(String.class);
+                })
                 .filter(chunk -> !chunk.isBlank() && !chunk.trim().equals("[DONE]"))
                 .mapNotNull(this::extractTokenFromChunk);
     }

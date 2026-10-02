@@ -47,7 +47,50 @@ public class GeminiProvider implements AIProvider {
 
     @Override
     public reactor.core.publisher.Flux<String> streamMessage(List<ChatMessage> chatHistory) {
-        throw new UnsupportedOperationException("Streaming not yet implemented for Gemini");
+        List<Map<String, Object>> contents = new ArrayList<>();
+        for (ChatMessage msg : chatHistory) {
+            Map<String, Object> entry = new HashMap<>();
+            String geminiRole = "assistant".equals(msg.getRole()) ? "model" : "user";
+            entry.put("role", geminiRole);
+            entry.put("parts", List.of(Map.of("text", msg.getContent())));
+            contents.add(entry);
+        }
+
+        Map<String, Object> requestBody = new HashMap<>();
+        requestBody.put("contents", contents);
+
+        String fullUrl = apiUrl + model + ":streamGenerateContent?alt=sse&key=" + apiKey;
+
+        return webClient.post()
+                .uri(fullUrl)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(requestBody)
+                .exchangeToFlux(response -> {
+                    RateLimitInfo info = rateLimitParser.parse(response.headers().asHttpHeaders());
+                    rateLimitService.recordRateLimitInfo(ProviderName.GEMINI, info);
+
+                    if (response.statusCode().isError()) {
+                        return response.createException().flatMapMany(reactor.core.publisher.Flux::error);
+                    }
+
+                    return response.bodyToFlux(String.class);
+                })
+                .filter(chunk -> !chunk.isBlank())
+                .mapNotNull(this::extractStreamToken);
+    }
+
+    private String extractStreamToken(String chunk) {
+        try {
+            String json = chunk.startsWith("data:") ? chunk.substring(5).trim() : chunk.trim();
+            if (json.isEmpty()) return null;
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            com.fasterxml.jackson.databind.JsonNode node = mapper.readTree(json);
+            com.fasterxml.jackson.databind.JsonNode text = node.path("candidates").path(0)
+                    .path("content").path("parts").path(0).path("text");
+            return text.isMissingNode() ? null : text.asText();
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     @Override

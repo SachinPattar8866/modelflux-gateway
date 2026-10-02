@@ -48,7 +48,49 @@ public class OpenRouterProvider implements AIProvider {
 
     @Override
     public reactor.core.publisher.Flux<String> streamMessage(List<ChatMessage> chatHistory) {
-        throw new UnsupportedOperationException("Streaming not yet implemented for Gemini");
+        Map<String, Object> requestBody = new HashMap<>();
+        requestBody.put("model", model);
+        requestBody.put("stream", true);
+
+        List<Map<String, String>> messages = new ArrayList<>();
+        for (ChatMessage msg : chatHistory) {
+            Map<String, String> messageMap = new HashMap<>();
+            messageMap.put("role", msg.getRole());
+            messageMap.put("content", msg.getContent());
+            messages.add(messageMap);
+        }
+        requestBody.put("messages", messages);
+
+        return webClient.post()
+                .uri(apiUrl)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(requestBody)
+                .exchangeToFlux(response -> {
+                    RateLimitInfo info = rateLimitParser.parse(response.headers().asHttpHeaders());
+                    rateLimitService.recordRateLimitInfo(ProviderName.OPENROUTER, info);
+
+                    if (response.statusCode().isError()) {
+                        return response.createException().flatMapMany(reactor.core.publisher.Flux::error);
+                    }
+
+                    return response.bodyToFlux(String.class);
+                })
+                .filter(chunk -> !chunk.isBlank() && !chunk.trim().equals("[DONE]"))
+                .mapNotNull(this::extractStreamToken);
+    }
+
+    private String extractStreamToken(String chunk) {
+        try {
+            String json = chunk.startsWith("data:") ? chunk.substring(5).trim() : chunk.trim();
+            if (json.isEmpty() || json.equals("[DONE]")) return null;
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            com.fasterxml.jackson.databind.JsonNode node = mapper.readTree(json);
+            com.fasterxml.jackson.databind.JsonNode delta = node.path("choices").path(0).path("delta").path("content");
+            return delta.isMissingNode() ? null : delta.asText();
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     @Override
