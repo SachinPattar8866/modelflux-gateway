@@ -66,7 +66,7 @@ public class ChatWebSocketController {
 
         if (index >= candidates.size()) {
             messagingTemplate.convertAndSendToUser(userEmail, "/queue/chat",
-                    new StreamChunk(conversation.getId(), "Error: all providers failed", true, false));
+                    new StreamChunk(conversation.getId(), "Error: all providers failed", true, false, null));
             return;
         }
 
@@ -88,21 +88,17 @@ public class ChatWebSocketController {
                     anyTokenSent[0] = true;
                     attemptBuffer.append(token);
                     messagingTemplate.convertAndSendToUser(userEmail, "/queue/chat",
-                            new StreamChunk(conversation.getId(), token, false, false));
+                            new StreamChunk(conversation.getId(), token, false, false, null));
                 },
                 error -> {
                     long elapsedNanos = System.nanoTime() - startNanos;
-                    // Manually record the failure against the circuit breaker — this is the piece
-                    // that was missing. Without it, a provider that dies mid-stream (after headers
-                    // already succeeded) never gets flagged as unhealthy, since no new headers
-                    // arrive to trigger recordRateLimitInfo().
                     breaker.onError(elapsedNanos, TimeUnit.NANOSECONDS, error);
 
                     log.warn("Provider {} failed mid-stream: {}", provider.getProviderName(), error.getMessage());
                     if (anyTokenSent[0]) {
                         messagingTemplate.convertAndSendToUser(userEmail, "/queue/chat",
                                 new StreamChunk(conversation.getId(),
-                                        "Switching from " + provider.getProviderName() + "...", false, true));
+                                        "Switching from " + provider.getProviderName() + "...", false, true, null));
                     }
                     attemptStream(candidates, index + 1, history, conversation, userEmail);
                 },
@@ -113,7 +109,7 @@ public class ChatWebSocketController {
                     String finalReply = attemptBuffer.toString();
                     conversationService.saveAssistantMessage(conversation.getId(), finalReply, provider.getProviderName().name());
                     messagingTemplate.convertAndSendToUser(userEmail, "/queue/chat",
-                            new StreamChunk(conversation.getId(), null, true, false));
+                            new StreamChunk(conversation.getId(), null, true, false, provider.getProviderName().name()));
                 }
         );
     }
@@ -148,12 +144,14 @@ public class ChatWebSocketController {
         public final String token;
         public final boolean done;
         public final boolean switching;
+        public final String providerUsed;
 
-        public StreamChunk(Long conversationId, String token, boolean done, boolean switching) {
+        public StreamChunk(Long conversationId, String token, boolean done, boolean switching, String providerUsed) {
             this.conversationId = conversationId;
             this.token = token;
             this.done = done;
             this.switching = switching;
+            this.providerUsed = providerUsed;
         }
     }
 }
