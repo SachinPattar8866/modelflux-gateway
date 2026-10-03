@@ -9,6 +9,9 @@ import com.modelflux.repository.MessageRepository;
 import com.modelflux.repository.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.modelflux.model.dto.ConversationSummaryResponse;
+import com.modelflux.model.dto.MessageResponse;
+import java.util.stream.Collectors;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -98,5 +101,28 @@ public class ConversationService {
         conversationRepository.save(conversation);
 
         return messageRepository.save(message);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ConversationSummaryResponse> listConversationsForUser(String userEmail) {
+        User user = userRepository.findByEmail(userEmail)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+        return conversationRepository.findByUserIdOrderByUpdatedAtDesc(user.getId()).stream()
+                .map(c -> new ConversationSummaryResponse(c.getId(), c.getTitle(), c.getUpdatedAt()))
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<MessageResponse> getMessagesForUser(Long conversationId, String userEmail) {
+        User user = userRepository.findByEmail(userEmail)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+        conversationRepository.findByIdAndUserId(conversationId, user.getId())
+                .orElseThrow(() -> new IllegalArgumentException("Conversation not found or access denied"));
+
+        return messageRepository.findByConversationIdOrderByCreatedAtAsc(conversationId).stream()
+                .map(m -> new MessageResponse(m.getRole().name(), m.getContent(), m.getProviderUsed(), m.getCreatedAt()))
+                .collect(Collectors.toList());
     }
 }
