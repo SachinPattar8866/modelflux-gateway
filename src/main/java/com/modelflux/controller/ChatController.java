@@ -12,6 +12,11 @@ import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import com.modelflux.model.dto.ConversationSummaryResponse;
+import com.modelflux.model.dto.MessageResponse;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import java.util.List;
 
 import java.util.List;
 
@@ -25,6 +30,20 @@ public class ChatController {
     public ChatController(ConversationService conversationService, ChatOrchestratorService chatOrchestratorService) {
         this.conversationService = conversationService;
         this.chatOrchestratorService = chatOrchestratorService;
+    }
+
+    @GetMapping
+    public ResponseEntity<List<ConversationSummaryResponse>> listConversations(Authentication authentication) {
+        String userEmail = authentication.getName();
+        List<ConversationSummaryResponse> conversations = conversationService.listConversationsForUser(userEmail);
+        return ResponseEntity.ok(conversations);
+    }
+
+    @GetMapping("/{conversationId}/messages")
+    public ResponseEntity<List<MessageResponse>> getMessages(@PathVariable Long conversationId, Authentication authentication) {
+        String userEmail = authentication.getName();
+        List<MessageResponse> messages = conversationService.getMessagesForUser(conversationId, userEmail);
+        return ResponseEntity.ok(messages);
     }
 
     @PostMapping
