@@ -1,24 +1,23 @@
 spring:
   config:
-    # This tells Spring to load the .env file and parse it like a properties file
     import: optional:file:.env[.properties]
+
   application:
     name: modelflux
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/modelflux
-    username: postgres
-    password: ${DB_PASSWORD}
+    url: ${DATABASE_URL}
+    username: ${DATABASE_USERNAME}
+    password: ${DATABASE_PASSWORD}
 
   jpa:
     hibernate:
       ddl-auto: update
-    show-sql: true
+    show-sql: false
 
   data:
     redis:
-      host: localhost
-      port: 6379
+      url: ${REDIS_URL}
 
 jwt:
   secret: ${JWT_SECRET}
@@ -41,3 +40,7 @@ openrouter:
     key: ${OPENROUTER_API_KEY}
     url: https://openrouter.ai/api/v1/chat/completions
   model: openrouter/free
+
+server:
+  port: ${PORT:10000}
+  address: 0.0.0.0
