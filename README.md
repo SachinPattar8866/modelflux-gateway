@@ -1,3 +1,5 @@
+Live link: https://modelflux-frontend.vercel.app/
+
 # ModelFlux
 
 A resilient, multi-provider AI chat application. Instead of relying on a single LLM API, ModelFlux routes every chat request across multiple free-tier providers (Groq, Gemini, OpenRouter), automatically failing over to a healthy provider when one is rate-limited, down, or fails mid-stream — with live status visibility and manual override in the UI.
